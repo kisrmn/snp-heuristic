@@ -10,14 +10,19 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 @pytest.fixture(scope="session")
 def cases() -> dict[str, Case]:
-    loaded, errors = load_cases(DATA_DIR)
-    assert errors == []
-    return {c.supply.case_id: c for c in loaded}
+    loaded = load_cases(DATA_DIR)
+    return {case.supply.case_id: case for case in loaded}
 
 
-def req(rid: str, priority: int, demand: int, min_lot: int = 0, rounding: int = 1) -> Request:
+def make_request(
+    request_id: str,
+    priority: int,
+    demand: int,
+    min_lot: int = 0,
+    rounding: int = 1,
+) -> Request:
     return Request(
-        request_id=rid,
+        request_id=request_id,
         priority=priority,
         demand_qty=demand,
         min_lot=min_lot,

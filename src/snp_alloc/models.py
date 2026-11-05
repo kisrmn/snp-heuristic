@@ -1,11 +1,14 @@
-"""Схемы входа. Pydantic отсекает некорректные строки ещё до алгоритма."""
-
 from pydantic import BaseModel, ConfigDict, Field
 
 
-def ceil_to(qty: int, step: int) -> int:
-    """Наименьшее кратное `step`, не меньшее `qty`."""
-    return -(-qty // step) * step
+def round_down(qty: int, step: int) -> int:
+    lots = qty // step
+    return lots * step
+
+
+def round_up(qty: int, step: int) -> int:
+    lots = (qty + step - 1) // step
+    return lots * step
 
 
 class Request(BaseModel):
@@ -20,13 +23,22 @@ class Request(BaseModel):
 
     @property
     def step(self) -> int:
-        """Кратность отгрузки; 0 трактуем как «без ограничения», так же как min_lot=0."""
-        return self.rounding_value or 1
+        if self.rounding_value == 0:
+            return 1
+        return self.rounding_value
 
     @property
     def min_qty(self) -> int:
-        """Минимальная допустимая ненулевая отгрузка: min_lot, поднятый до кратности."""
-        return ceil_to(max(self.min_lot, self.step), self.step)
+        lower_bound = max(self.min_lot, self.step)
+        return round_up(lower_bound, self.step)
+
+    @property
+    def demand_rounded_down(self) -> int:
+        return round_down(self.demand_qty, self.step)
+
+    @property
+    def demand_rounded_up(self) -> int:
+        return round_up(self.demand_qty, self.step)
 
 
 class Supply(BaseModel):

@@ -1,45 +1,61 @@
-"""Точка входа: считает все кейсы из CSV и печатает план."""
-
 import argparse
+import logging
 from pathlib import Path
 
 from snp_alloc.allocate import allocate
 from snp_alloc.io import Case, load_cases
-from snp_alloc.models import Request, ceil_to
+from snp_alloc.models import Request
+
+logger = logging.getLogger(__name__)
 
 
-def _note(r: Request, available: int) -> str:
-    notes = []
-    if r.rounding_value == 0:
-        notes.append("rounding_value=0 -> 1")
-    if r.demand_qty and r.min_qty > min(ceil_to(r.demand_qty, r.step), available):
-        notes.append(f"min_lot {r.min_lot} unreachable")
-    return ", ".join(notes)
+def _warnings(request: Request, available_qty: int) -> list[str]:
+    warnings = []
+    if request.rounding_value == 0:
+        warnings.append("rounding_value is 0, treated as 1")
+
+    if request.demand_qty > 0:
+        reachable = min(request.demand_rounded_up, available_qty)
+        if request.min_qty > reachable:
+            warnings.append(f"min_lot {request.min_lot} is unreachable")
+    return warnings
 
 
-def print_case(case: Case) -> None:
-    s = case.supply
-    plan = allocate(s.available_qty, case.requests)
-    print(f"\n{s.case_id}  {s.period} {s.item} @ {s.source_location}  available={s.available_qty}")
-    print(f"  {'request':<8}{'prio':>5}{'demand':>8}{'min_lot':>8}{'round':>6}{'shipped':>9}  note")
-    for r in sorted(case.requests, key=lambda r: (r.priority, r.request_id)):
-        print(
-            f"  {r.request_id:<8}{r.priority:>5}{r.demand_qty:>8}{r.min_lot:>8}"
-            f"{r.rounding_value:>6}{plan[r.request_id]:>9}  {_note(r, s.available_qty)}"
+def _log_case(case: Case) -> None:
+    supply = case.supply
+    plan = allocate(supply.available_qty, case.requests)
+    logger.info(
+        f"{supply.case_id}: {supply.item} @ {supply.source_location}, "
+        f"period {supply.period}, available {supply.available_qty}"
+    )
+
+    ordered = sorted(case.requests, key=lambda request: (request.priority, request.request_id))
+    for request in ordered:
+        shipped = plan[request.request_id]
+        logger.info(
+            f"  {request.request_id} priority {request.priority}: "
+            f"demand {request.demand_qty}, min_lot {request.min_lot}, "
+            f"rounding {request.rounding_value} -> shipped {shipped}"
         )
-    for rid, reason in case.rejected.items():
-        print(f"  {rid:<8}{'rejected':>27}{0:>9}  {reason}")
-    print(f"  unallocated: {s.available_qty - sum(plan.values())}")
+        for warning in _warnings(request, supply.available_qty):
+            logger.warning(f"  {request.request_id}: {warning}")
+
+    for request_id, reason in case.rejected.items():
+        logger.warning(f"  {request_id} rejected: {reason}")
+
+    shipped_total = sum(plan.values())
+    unallocated = supply.available_qty - shipped_total
+    logger.info(f"  unallocated: {unallocated}")
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(message)s")
     parser = argparse.ArgumentParser(description="SNP Heuristic: shortage allocation")
     parser.add_argument("--data", type=Path, default=Path("data"), help="dir with CSV files")
-    cases, errors = load_cases(parser.parse_args().data)
-    for case in cases:
-        print_case(case)
-    for err in errors:
-        print(f"\nERROR {err}")
+    args = parser.parse_args()
+
+    for case in load_cases(args.data):
+        _log_case(case)
 
 
 if __name__ == "__main__":

@@ -15,26 +15,26 @@ EXPECTED = {
 }
 
 
-@pytest.mark.parametrize("case_id", sorted(EXPECTED))
+@pytest.mark.parametrize(argnames="case_id", argvalues=sorted(EXPECTED))
 def test_expected_plan(cases, case_id):
     """Фиксирует план каждого CSV-кейса; при смене правила покажет, какой кейс изменился."""
     case = cases[case_id]
-    plan = allocate(case.supply.available_qty, case.requests)
+    plan = allocate(available_qty=case.supply.available_qty, requests=case.requests)
     assert plan == EXPECTED[case_id]
 
 
 def test_invalid_request_rejected(cases):
     """demand=-10 отклоняется при чтении; без этого строка попала бы в расчёт или уронила кейс."""
-    rejected = cases["CASE_03"].rejected
-    assert "R-302" in rejected
+    rejection_reasons = cases["CASE_03"].rejection_reasons
+    assert "R-302" in rejection_reasons
 
 
-@pytest.mark.parametrize("case_id", sorted(EXPECTED))
+@pytest.mark.parametrize(argnames="case_id", argvalues=sorted(EXPECTED))
 def test_hard_constraints(cases, case_id):
     """Три зафиксированных требования; если сломать любое из них, план станет невалидным."""
     case = cases[case_id]
     available = case.supply.available_qty
-    plan = allocate(available, case.requests)
+    plan = allocate(available_qty=available, requests=case.requests)
 
     shipped_total = sum(plan.values())
     assert shipped_total <= available
@@ -43,10 +43,11 @@ def test_hard_constraints(cases, case_id):
         shipped = plan[request.request_id]
         if shipped == 0:
             continue
-        assert shipped >= request.min_qty
-        assert shipped % request.step == 0
+        assert shipped >= request.min_shipment_qty
+        assert shipped % request.rounding_step == 0
 
     for seed in range(5):
         shuffled = list(case.requests)
-        random.Random(seed).shuffle(shuffled)
-        assert allocate(available, shuffled) == plan
+        rng = random.Random(seed)
+        rng.shuffle(shuffled)
+        assert allocate(available_qty=available, requests=shuffled) == plan

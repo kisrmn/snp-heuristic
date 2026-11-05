@@ -32,4 +32,4 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 testpaths = ["tests"]
 
 [project.scripts]
-snp-alloc = "snp_alloc.cli:main"
+snp-alloc = "snp_alloc.main:main"
